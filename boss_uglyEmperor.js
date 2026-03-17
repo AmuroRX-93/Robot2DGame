@@ -573,11 +573,34 @@ class UglyEmperor extends GameObject {
     }
     
     checkBounds() {
-        if (this.x <= 0 || this.x + this.width >= GAME_CONFIG.WIDTH) {
-            this.vx = -this.vx;
-        }
-        if (this.y <= 0 || this.y + this.height >= GAME_CONFIG.HEIGHT) {
-            this.vy = -this.vy;
+        // 硬边界钳制，防止出界
+        if (this.x < 0) { this.x = 1; this.vx = Math.abs(this.vx); }
+        if (this.x + this.width > GAME_CONFIG.WIDTH) { this.x = GAME_CONFIG.WIDTH - this.width - 1; this.vx = -Math.abs(this.vx); }
+        if (this.y < 0) { this.y = 1; this.vy = Math.abs(this.vy); }
+        if (this.y + this.height > GAME_CONFIG.HEIGHT) { this.y = GAME_CONFIG.HEIGHT - this.height - 1; this.vy = -Math.abs(this.vy); }
+        
+        // 智能边界：靠近边缘时主动转向中央
+        const edgeThreshold = 60;
+        const centerX = GAME_CONFIG.WIDTH / 2;
+        const centerY = GAME_CONFIG.HEIGHT / 2;
+        const bx = this.x + this.width / 2;
+        const by = this.y + this.height / 2;
+        let needSteer = false;
+        let targetX = bx, targetY = by;
+        
+        if (bx < edgeThreshold) { targetX = centerX; needSteer = true; }
+        if (bx > GAME_CONFIG.WIDTH - edgeThreshold) { targetX = centerX; needSteer = true; }
+        if (by < edgeThreshold) { targetY = centerY; needSteer = true; }
+        if (by > GAME_CONFIG.HEIGHT - edgeThreshold) { targetY = centerY; needSteer = true; }
+        
+        if (needSteer && !this.isDodging) {
+            const dx = targetX - bx;
+            const dy = targetY - by;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0) {
+                this.vx = (dx / dist) * this.speed;
+                this.vy = (dy / dist) * this.speed;
+            }
         }
     }
     
@@ -596,6 +619,7 @@ class UglyEmperor extends GameObject {
     takeDamage(damage, damageSource = 'unknown') {
         // 丑皇特殊伤害机制
         let shouldTakeDamage = false;
+        let actualDamage = damage;
         
         if (!this.phaseTwo.activated) {
             // 一阶段：只有导弹不能造成伤害（其他攻击都能造成伤害）
@@ -603,22 +627,23 @@ class UglyEmperor extends GameObject {
                 shouldTakeDamage = true;
             }
         } else {
-            // 二阶段：只有导弹能造成伤害（其他攻击都不能造成伤害）
+            // 二阶段：只有导弹能造成伤害，且导弹伤害x3
             if (damageSource === 'missile') {
                 shouldTakeDamage = true;
+                actualDamage = damage * 3;
             }
         }
         
         if (shouldTakeDamage) {
-            this.health -= damage;
+            this.health -= actualDamage;
             
             // 防止血量变成负数
             if (this.health < 0) {
                 this.health = 0;
             }
             
-            // 添加受击提示
-            this.addHitIndicator(damage);
+            // 添加受击提示（显示实际伤害）
+            this.addHitIndicator(actualDamage);
             
             if (this.health <= 0) {
                 this.health = 0;
@@ -646,7 +671,8 @@ class UglyEmperor extends GameObject {
     tryHeal() {
         const now = Date.now();
         const hs = this.healSystem;
-        if (now - hs.lastAttempt < hs.interval) return;
+        const interval = this.phaseTwo.activated ? 300 : hs.interval;
+        if (now - hs.lastAttempt < interval) return;
         hs.lastAttempt = now;
         if (this.health >= this.maxHealth) return;
         if (Math.random() > hs.chance) return;
@@ -1010,6 +1036,23 @@ class ChaosBullet extends GameObject {
             return;
         }
         
+        // 拦截玩家导弹：混沌子弹可以提前引爆导弹
+        if (game.missiles) {
+            for (let i = game.missiles.length - 1; i >= 0; i--) {
+                const missile = game.missiles[i];
+                if (missile.isBossMissile || missile.isReversed) continue;
+                const dx = missile.x - (this.x + this.width / 2);
+                const dy = missile.y - (this.y + this.height / 2);
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 15) {
+                    missile.intercepted = true;
+                    missile.explode();
+                    this.shouldDestroy = true;
+                    return;
+                }
+            }
+        }
+        
         super.update();
     }
     
@@ -1043,6 +1086,7 @@ class Mine extends GameObject {
         super(x - 7.5, y - 7.5, 15, 15, '#FF6B35'); // 橙色机雷，15x15像素，以中心点定位
         
         // 机雷属性
+        this.health = 3; // 3点生命值（近防炮3发清除）
         this.damage = 15; // 爆炸伤害15点
         this.explosionRadius = 175; // 有效杀伤半径175像素
         this.triggerDistance = 125; // 引爆距离125像素
@@ -1130,6 +1174,18 @@ class Mine extends GameObject {
         
         // 创建爆炸特效
         this.createExplosionEffect();
+    }
+    
+    takeDamage(damage) {
+        if (this.isExploded) return;
+        this.health -= damage;
+        if (this.health <= 0) {
+            this.shouldDestroy = true;
+            if (game.mines) {
+                const index = game.mines.indexOf(this);
+                if (index > -1) game.mines.splice(index, 1);
+            }
+        }
     }
     
     createExplosionEffect() {
@@ -1304,6 +1360,25 @@ class MolotovCocktail extends GameObject {
         
         super.update();
         this.rotation += this.rotationSpeed;
+        
+        // 飞行中拦截玩家导弹
+        if (game.missiles) {
+            const myCenterX = this.x + this.width / 2;
+            const myCenterY = this.y + this.height / 2;
+            for (let i = game.missiles.length - 1; i >= 0; i--) {
+                const missile = game.missiles[i];
+                if (missile.isBossMissile || missile.isReversed) continue;
+                const dx = missile.x - myCenterX;
+                const dy = missile.y - myCenterY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 15) {
+                    missile.intercepted = true;
+                    missile.explode();
+                    this.shouldDestroy = true;
+                    return;
+                }
+            }
+        }
         
         if (this.x < 0 || this.x > GAME_CONFIG.WIDTH || 
             this.y < 0 || this.y > GAME_CONFIG.HEIGHT) {

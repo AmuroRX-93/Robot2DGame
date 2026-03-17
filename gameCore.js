@@ -17,6 +17,7 @@ class Game {
         this.mines = []; // 机雷数组
         this.molotovs = []; // 燃烧瓶数组
         this.starDevourerBullets = []; // 噬星者步枪子弹数组
+        this.ciwsBullets = []; // 近防炮子弹数组
         this.boss = null;
         
         this.init();
@@ -55,6 +56,7 @@ class Game {
                 this.crescentBullets = [];
                 this.iceClones = [];
                 this.starDevourerBullets = [];
+                this.ciwsBullets = [];
                 this.bossMissiles = [];
                 
                 // 在屏幕边缘随机生成，远离玩家中心位置
@@ -273,6 +275,7 @@ class Game {
         this.crescentBullets = [];
         this.iceClones = [];
         this.starDevourerBullets = [];
+        this.ciwsBullets = [];
         this.boss = null;
         
         // 清除所有键盘状态，防止角色不由自主移动
@@ -303,6 +306,7 @@ class Game {
             this.crescentBullets = [];
             this.iceClones = [];
             this.starDevourerBullets = [];
+            this.ciwsBullets = [];
             this.boss = null;
             updateUI();
             return;
@@ -555,6 +559,17 @@ class Game {
             }
         }
         
+        // 更新近防炮子弹
+        if (this.ciwsBullets) {
+            for (let i = this.ciwsBullets.length - 1; i >= 0; i--) {
+                const bullet = this.ciwsBullets[i];
+                bullet.update();
+                if (bullet.shouldDestroy) {
+                    this.ciwsBullets.splice(i, 1);
+                }
+            }
+        }
+        
         // 更新燃烧瓶
         if (this.molotovs) {
             for (let i = this.molotovs.length - 1; i >= 0; i--) {
@@ -628,6 +643,11 @@ class Game {
         // 绘制噬星者步枪子弹
         if (this.starDevourerBullets) {
             this.starDevourerBullets.forEach(bullet => bullet.draw(this.ctx));
+        }
+        
+        // 绘制近防炮子弹
+        if (this.ciwsBullets) {
+            this.ciwsBullets.forEach(bullet => bullet.draw(this.ctx));
         }
 
         // 绘制子弹
@@ -941,6 +961,7 @@ class Game {
         
         const shoulderWeaponOptions = [
             { type: 'missile_launcher', name: '15连导弹发射器', color: '#FFD700', desc: '强追踪1.1秒 | 范围爆炸 | 高伤害' },
+            { type: 'ciws', name: '近防炮', color: '#00FF88', desc: '自动拦截制导武器 | 20发弹仓 | 优先打导弹' },
             { type: 'super_weapon', name: '超级导弹', color: '#FF0000', desc: '100伤害 | 一次战斗只能用一次 | 占用双槽位' }
         ];
         
@@ -1134,6 +1155,7 @@ class Game {
         
         const shoulderWeaponOptions = [
             { type: 'missile_launcher', name: '15连导弹发射器', color: '#FFD700', desc: '强追踪1.1秒 | 范围爆炸 | 高伤害' },
+            { type: 'ciws', name: '近防炮', color: '#00FF88', desc: '自动拦截制导武器 | 20发弹仓 | 优先打导弹' },
             { type: 'super_weapon', name: '超级导弹', color: '#FF0000', desc: '100伤害 | 一次战斗只能用一次 | 占用双槽位' }
         ];
         
@@ -2321,6 +2343,7 @@ class Game {
         this.crescentBullets = [];
         this.iceClones = [];
         this.starDevourerBullets = [];
+        this.ciwsBullets = [];
         this.boss = null;
         // 不在这里预生成敌人，等模式选择后再生成
         
